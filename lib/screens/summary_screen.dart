@@ -15,23 +15,39 @@ class SummaryScreen extends StatefulWidget {
   State<SummaryScreen> createState() => _SummaryScreenState();
 }
 
-class _SummaryScreenState extends State<SummaryScreen> {
+class _SummaryScreenState extends State<SummaryScreen> with WidgetsBindingObserver {
   DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    SchedulerBinding.instance.addPostFrameCallback((callback){
+    WidgetsBinding.instance.addObserver(this);
+    // Use SchedulerBinding to ensure Provider is available after the first frame
+    SchedulerBinding.instance.addPostFrameCallback((_) {
       _loadSummaryForSelectedDate();
     });
+  }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Reload data for the currently selected date when app resumes
+      _loadSummaryForSelectedDate();
+    }
   }
 
   Future<void> _loadSummaryForSelectedDate() async {
-    await Provider.of<TrackingProvider>(
-      context,
-      listen: false,
-    ).loadSummaryForDate(_selectedDate);
+    if (mounted) { // Check if the widget is still in the tree
+      await Provider.of<TrackingProvider>(context, listen: false)
+          .loadSummaryForDate(_selectedDate);
+    }
   }
 
   void _goToPreviousDay() {
@@ -42,7 +58,6 @@ class _SummaryScreenState extends State<SummaryScreen> {
   }
 
   void _goToNextDay() {
-    // Prevent going to a future date beyond today
     final today = DateTime.now();
     if (_selectedDate.year == today.year &&
         _selectedDate.month == today.month &&
@@ -67,31 +82,17 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
   Color _getColorForLocation(String locationName) {
     switch (locationName.toLowerCase()) {
-      case 'home':
-        return Colors.blue;
-      case 'office':
-        return Colors.green;
-      case 'traveling':
-        return Colors.orange;
+      case 'home': return Colors.blue;
+      case 'office': return Colors.green;
+      case 'traveling': return Colors.orange;
       default:
         final hash = locationName.hashCode;
-        return Color.fromARGB(
-          255,
-          (hash & 0xFF0000) >> 16,
-          (hash & 0x00FF00) >> 8,
-          hash & 0x0000FF,
-        ).withOpacity(0.7);
+        return Color.fromARGB(255, (hash & 0xFF0000) >> 16, (hash & 0x00FF00) >> 8, hash & 0x0000FF).withOpacity(0.7);
     }
   }
 
-  void _showChangeRadiusDialog(
-    BuildContext context,
-    Geofence geofence,
-    GeofenceProvider geofenceProvider,
-  ) {
-    final TextEditingController radiusController = TextEditingController(
-      text: geofence.radius.toString(),
-    );
+  void _showChangeRadiusDialog(BuildContext context, Geofence geofence, GeofenceProvider geofenceProvider) {
+    final TextEditingController radiusController = TextEditingController(text: geofence.radius.toString());
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -103,16 +104,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
             key: formKey,
             child: TextFormField(
               controller: radiusController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'New Radius (meters)',
-                hintText: 'e.g., 100.0',
-              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'New Radius (meters)', hintText: 'e.g., 100.0'),
               validator: (value) {
-                if (value == null || value.isEmpty)
-                  return 'Please enter a radius';
+                if (value == null || value.isEmpty) return 'Please enter a radius';
                 final double? newRadius = double.tryParse(value);
                 if (newRadius == null) return 'Invalid number';
                 if (newRadius <= 0) return 'Radius must be positive';
@@ -121,36 +116,18 @@ class _SummaryScreenState extends State<SummaryScreen> {
             ),
           ),
           actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.of(ctx).pop(),
-            ),
+            TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(ctx).pop()),
             TextButton(
               child: const Text('Save'),
               onPressed: () {
                 if (formKey.currentState!.validate()) {
-                  final double? newRadius = double.tryParse(
-                    radiusController.text,
-                  );
+                  final double? newRadius = double.tryParse(radiusController.text);
                   if (newRadius != null) {
-                    geofenceProvider.updateGeofenceRadius(
-                      geofence.id,
-                      newRadius,
-                    );
+                    geofenceProvider.updateGeofenceRadius(geofence.id, newRadius);
                     Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Radius for ${geofence.name} updated to $newRadius m.',
-                        ),
-                      ),
-                    );
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Radius for ${geofence.name} updated to $newRadius m.')));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Invalid radius value entered.'),
-                      ),
-                    );
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid radius value entered.')));
                   }
                 }
               },
@@ -164,16 +141,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
   @override
   Widget build(BuildContext context) {
     final trackingProvider = Provider.of<TrackingProvider>(context);
-
-    final geofenceProvider = Provider.of<GeofenceProvider>(
-      context,
-      listen: true,
-    );
+    final geofenceProvider = Provider.of<GeofenceProvider>(context, listen: true); 
     final DailySummary? summary = trackingProvider.currentSummary;
-    final bool isToday =
-        _selectedDate.year == DateTime.now().year &&
-        _selectedDate.month == DateTime.now().month &&
-        _selectedDate.day == DateTime.now().day;
+    final bool isToday = _selectedDate.year == DateTime.now().year && 
+                         _selectedDate.month == DateTime.now().month && 
+                         _selectedDate.day == DateTime.now().day;
 
     return Scaffold(
       appBar: AppBar(
@@ -185,25 +157,15 @@ class _SummaryScreenState extends State<SummaryScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios),
-
             onPressed: isToday ? null : _goToNextDay,
           ),
         ],
       ),
-      body:
-          summary == null ||
-              summary.date.year != _selectedDate.year ||
-              summary.date.month != _selectedDate.month ||
-              summary.date.day != _selectedDate.day
+      body: summary == null || summary.date.year != _selectedDate.year || summary.date.month != _selectedDate.month || summary.date.day != _selectedDate.day
           ? Center(
-              child:
-                  summary == null &&
-                      trackingProvider
-                          .isLoadingSummary // Check if loading
+              child: trackingProvider.isLoadingSummary 
                   ? const CircularProgressIndicator()
-                  : Text(
-                      'No summary available for ${DateFormat.yMMMMd().format(_selectedDate)}.',
-                    ),
+                  : Text('No summary available for ${DateFormat.yMMMMd().format(_selectedDate)}.'),
             )
           : Padding(
               padding: const EdgeInsets.all(16.0),
@@ -214,108 +176,54 @@ class _SummaryScreenState extends State<SummaryScreen> {
                     child: ListView(
                       children: [
                         ...geofenceProvider.geofences.map((geofence) {
-                          bool isEditableGeofence =
-                              geofence.name.toLowerCase() != "home" &&
-                              geofence.name.toLowerCase() != "office";
+                          bool isEditableGeofence = geofence.name.toLowerCase() != "home" && geofence.name.toLowerCase() != "office";
                           return ListTile(
                             key: ValueKey(geofence.id),
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 2.0,
-                              horizontal: 0.0,
-                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 0.0),
                             title: SummaryCard(
                               title: geofence.name,
-                              duration: _formatDuration(
-                                summary.getLocationDuration(geofence.id),
-                              ),
+                              duration: _formatDuration(summary.getLocationDuration(geofence.id)),
                               color: _getColorForLocation(geofence.name),
                             ),
-                            trailing: isEditableGeofence
-                                ? PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert),
-                                    onSelected: (String value) {
-                                      if (value == 'remove') {
-                                        showDialog(
-                                          context: context,
-                                          builder: (BuildContext ctx) {
-                                            return AlertDialog(
-                                              title: const Text(
-                                                'Confirm Deletion',
-                                              ),
-                                              content: Text(
-                                                'Are you sure you want to remove "${geofence.name}"?',
-                                              ),
-                                              actions: <Widget>[
-                                                TextButton(
-                                                  child: const Text('Cancel'),
-                                                  onPressed: () =>
-                                                      Navigator.of(ctx).pop(),
-                                                ),
-                                                TextButton(
-                                                  child: const Text(
-                                                    'Remove',
-                                                    style: TextStyle(
-                                                      color: Colors.red,
-                                                    ),
-                                                  ),
-                                                  onPressed: () {
-                                                    geofenceProvider
-                                                        .removeGeofence(
-                                                          geofence.id,
-                                                        );
-                                                    Navigator.of(ctx).pop();
-                                                    ScaffoldMessenger.of(
-                                                      context,
-                                                    ).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          'Geofence "${geofence.name}" removed.',
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        );
-                                      } else if (value == 'change_radius') {
-                                        _showChangeRadiusDialog(
-                                          context,
-                                          geofence,
-                                          geofenceProvider,
-                                        );
-                                      }
-                                    },
-                                    itemBuilder: (BuildContext context) =>
-                                        <PopupMenuEntry<String>>[
-                                          const PopupMenuItem<String>(
-                                            value: 'change_radius',
-                                            child: ListTile(
-                                              leading: Icon(
-                                                Icons.settings_overscan,
-                                              ),
-                                              title: Text('Change Radius'),
-                                            ),
-                                          ),
-                                          const PopupMenuItem<String>(
-                                            value: 'remove',
-                                            child: ListTile(
-                                              leading: Icon(
-                                                Icons.delete_outline,
-                                                color: Colors.red,
-                                              ),
-                                              title: Text(
-                                                'Remove',
-                                                style: TextStyle(
-                                                  color: Colors.red,
-                                                ),
-                                              ),
-                                            ),
+                            trailing: isEditableGeofence ? PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert),
+                              onSelected: (String value) {
+                                if (value == 'remove') {
+                                  showDialog(
+                                    context: context,
+                                    builder: (BuildContext ctx) {
+                                      return AlertDialog(
+                                        title: const Text('Confirm Deletion'),
+                                        content: Text('Are you sure you want to remove "${geofence.name}"?'),
+                                        actions: <Widget>[
+                                          TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(ctx).pop()),
+                                          TextButton(
+                                            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+                                            onPressed: () {
+                                              geofenceProvider.removeGeofence(geofence.id);
+                                              Navigator.of(ctx).pop();
+                                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Geofence "${geofence.name}" removed.')));
+                                            },
                                           ),
                                         ],
-                                  )
-                                : null, // No menu for non-editable geofences
+                                      );
+                                    },
+                                  );
+                                } else if (value == 'change_radius') {
+                                  _showChangeRadiusDialog(context, geofence, geofenceProvider);
+                                }
+                              },
+                              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                const PopupMenuItem<String>(
+                                  value: 'change_radius',
+                                  child: ListTile(leading: Icon(Icons.settings_overscan), title: Text('Change Radius')),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'remove',
+                                  child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Remove', style: TextStyle(color: Colors.red))),
+                                ),
+                              ],
+                            ) : null, 
                           );
                         }).toList(),
                         SummaryCard(

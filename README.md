@@ -6,7 +6,6 @@ Zitlac Location App is a Flutter-based Android application designed for advanced
 
 ### 1. Advanced Location Tracking
 - **Background Service**: Continuously tracks user location even when the app is not in the foreground, utilizing `flutter_background_service`.
-- **Stationary Detection**: Intelligently detects if the user is stationary to switch to lower-power location polling, conserving battery life.
 - **Dynamic Accuracy**: Adjusts location accuracy settings (e.g., from `LocationAccuracy.best` to `LocationAccuracy.medium`) based on movement status to further optimize battery usage.
 - **Permission Handling**: Robustly checks and requests necessary location permissions.
 
