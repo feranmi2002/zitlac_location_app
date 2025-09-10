@@ -179,26 +179,35 @@ void onStartLocationUpdates(ServiceInstance service) async {
     return;
   }
 
-  List<Geofence> geofences = await storageService.getGeofences();
+  List<Geofence> geofences = [];
+
+  Future<void>refreshGeoFences() async {
+    geofences.clear();
+    geofences = await storageService.getGeofences();
+    final customGeofences = [
+      Geofence(
+        id: 'home',
+        name: 'Home',
+        latitude: 37.7743583,
+        longitude: -122.4202183,
+        radius: 50.0,
+      ),
+      Geofence(
+        id: 'office',
+        name: 'Office',
+        latitude: 37.7858,
+        longitude: -122.4364,
+        radius: 50.0,
+      ),
+    ];
+    geofences.addAll(customGeofences);
+  }
+
+  refreshGeoFences();
+
+
 
   // These are hardcoded geofences.
-  final customGeofences = [
-    Geofence(
-      id: 'home',
-      name: 'Home',
-      latitude: 37.7743583,
-      longitude: -122.4202183,
-      radius: 50.0,
-    ),
-    Geofence(
-      id: 'office',
-      name: 'Office',
-      latitude: 37.7858,
-      longitude: -122.4364,
-      radius: 50.0,
-    ),
-  ];
-  geofences.addAll(customGeofences);
 
   // Initialize summary for the day the service starts
   DateTime serviceStartDate = DateTime.now().toUtc();
@@ -297,6 +306,8 @@ void onStartLocationUpdates(ServiceInstance service) async {
 
             // keep checking if tracking is still on
             isTrackingOn = await storageService.isTrackingOn();
+
+            refreshGeoFences();
           }
         },
         onError: (error, stackTrace) async {
