@@ -24,7 +24,7 @@ Zitlac Location App is a Flutter-based Android application designed for advanced
 - **Day Change Handling**: The background service correctly handles transitions between days, saving the completed day's summary and starting a new one.
 
 ### 4. Data Persistence
-- **Local Storage**: Utilizes a `StorageService` (likely built on top of a database like Hive or SQLite, though the specific implementation isn't detailed in the service layer) to store:
+- **Local Storage**: Utilizes a `StorageService` (likely built on top of a SharedPreferences database: to store:
     - Geofence definitions
     - Daily summaries
     - Tracking state (on/off)
@@ -37,7 +37,7 @@ Zitlac Location App is a Flutter-based Android application designed for advanced
 - **flutter_background_service**: For running the location tracking logic as a foreground service, ensuring continuity even when the app is in the background.
 - **flutter_local_notifications**: For managing the foreground service notification.
 - **intl**: For date formatting in summaries.
-- *(Potentially others like a database plugin for StorageService, e.g., hive, sqflite)*
+- **Shared Preferences**: For local data storage (geofences, summaries, tracking state).
 
 ## How to Run the Android Application
 
