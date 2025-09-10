@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import '../providers/tracking_provider.dart';
-import '../providers/geofence_provider.dart';
+
 import '../services/location_service.dart';
 import '../widgets/clock_buttons.dart';
 import 'add_geofence_screeen.dart';
@@ -23,8 +23,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _checkPermissionsAndService();
     LocationService.initializeNotificationChannel();
-    // Initial load of current day's summary when app starts and provider is ready
-    // Provider.of<TrackingProvider>(context, listen: false).getCurrentDaySummary();
+
   }
 
   @override
