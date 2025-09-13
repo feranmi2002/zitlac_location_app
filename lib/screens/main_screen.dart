@@ -79,7 +79,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ? SizedBox(
                     width: 24, 
                     height: 24, 
-                    child: CircularProgressIndicator(strokeWidth: 2.0, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
+                    child: CircularProgressIndicator(strokeWidth: 2.0, valueColor: AlwaysStoppedAnimation<Color>(Colors.black))
                   )
                 : const Icon(Icons.add_location),
             onPressed: _isFetchingLocation ? null : () async {

@@ -41,6 +41,8 @@ dependencies:
   flutter_local_notifications: ^19.4.1
   flutter_background_service: ^5.1.0
   shared_preferences: ^2.5.3
+  background_location_tracker: ^1.6.1
+
 
 
 

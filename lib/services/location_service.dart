@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' hide ActivityType;
 import 'package:zitlac_location_app/services/storage_service.dart';
 import '../models/daily_summary.dart';
 import '../models/geofence.dart';
@@ -86,25 +87,23 @@ class LocationService {
 
     flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
     const AndroidNotificationChannel driverOnlineChannel =
         AndroidNotificationChannel(
-          FOREGRROUND_NOTIFICATION_ID,
-          "Tracking location",
-          description: "Tracking lccation...",
-          importance: Importance.low,
-          playSound: false,
-          enableVibration: false,
-          enableLights: false,
-          showBadge: false,
-        );
+      FOREGRROUND_NOTIFICATION_ID,
+      "Tracking location",
+      description: "Tracking lccation...",
+      importance: Importance.low,
+      playSound: false,
+      enableVibration: false,
+      enableLights: false,
+      showBadge: false,
+    );
 
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(driverOnlineChannel);
   }
 
@@ -121,6 +120,7 @@ class LocationService {
     }
 
     _isTracking = true;
+
     startPushingLocationUpdates();
   }
 
@@ -148,7 +148,11 @@ class LocationService {
         onStart: onStartLocationUpdates,
         isForegroundMode: true,
       ),
-      iosConfiguration: IosConfiguration(),
+      iosConfiguration: IosConfiguration(
+        autoStart: true,
+        onForeground: onStartLocationUpdates,
+        onBackground: onIosBackground,
+      ),
     );
 
     final result = await service.startService();
@@ -161,8 +165,21 @@ class LocationService {
 }
 
 @pragma('vm:entry-point')
+Future<bool> onIosBackground(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  onStartLocationUpdates(service);
+  return true;
+}
+
+StreamSubscription<Position>? _positionUpdatesStream;
+Timer? _iosTimer;
+
+@pragma('vm:entry-point')
 void onStartLocationUpdates(ServiceInstance service) async {
-  StreamSubscription<Position>? _positionUpdatesStream;
+  if (_positionUpdatesStream != null || _iosTimer != null) {
+    return;
+  }
   DateTime _lastLocationUpdateTime = DateTime.now().toUtc();
 
   final storageService = StorageService();
@@ -181,7 +198,7 @@ void onStartLocationUpdates(ServiceInstance service) async {
 
   List<Geofence> geofences = [];
 
-  Future<void>refreshGeoFences() async {
+  Future<void> refreshGeoFences() async {
     geofences.clear();
     geofences = await storageService.getGeofences();
     final customGeofences = [
@@ -203,9 +220,7 @@ void onStartLocationUpdates(ServiceInstance service) async {
     geofences.addAll(customGeofences);
   }
 
-  refreshGeoFences();
-
-
+  await refreshGeoFences();
 
   // These are hardcoded geofences.
 
@@ -230,107 +245,113 @@ void onStartLocationUpdates(ServiceInstance service) async {
     );
   }
 
-  _positionUpdatesStream =
-      Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.best,
-          distanceFilter: 0,
-        ),
-      ).listen(
-        (Position? position) async {
-          if (position != null) {
-            final now = DateTime.now()
-                .toUtc(); // Current timestamp for this position update
+  Future<void> processPosition(Position? position) async {
+    if (position != null) {
+      final now =
+          DateTime.now().toUtc(); // Current timestamp for this position update
 
-            // Check for day change based on _currentSummary's date
-            if (_currentSummary != null &&
-                (now.year != _currentSummary!.date.year ||
-                    now.month != _currentSummary!.date.month ||
-                    now.day != _currentSummary!.date.day)) {
-              if (kDebugMode) {
-                print(
-                  "Day changed detected. Old summary date: ${_currentSummary!.date}, New date: $now",
-                );
-              }
-              // Save the completed summary for the previous day
-              await storageService.saveDailySummary(_currentSummary!);
-              if (kDebugMode) {
-                print("Saved summary for ${_currentSummary!.date}.");
-              }
+      // Check for day change based on _currentSummary's date
+      if (_currentSummary != null &&
+          (now.year != _currentSummary!.date.year ||
+              now.month != _currentSummary!.date.month ||
+              now.day != _currentSummary!.date.day)) {
+        if (kDebugMode) {
+          print(
+            "Day changed detected. Old summary date: ${_currentSummary!.date}, New date: $now",
+          );
+        }
+        // Save the completed summary for the previous day
+        await storageService.saveDailySummary(_currentSummary!);
+        if (kDebugMode) {
+          print("Saved summary for ${_currentSummary!.date}.");
+        }
 
-              // Create a new summary for the new day
-              _currentSummary = DailySummary(
-                date: DateTime(now.year, now.month, now.day),
-                timeInLocations: {}, // Reset times for the new day
-                travelingTime:
-                    Duration.zero, // Reset travel time for the new day
-              );
-              _lastLocationUpdateTime =
-                  now; // Reset last update time to now for accurate delta on new day
-              if (kDebugMode) {
-                print(
-                  "Created new summary for ${_currentSummary!.date}. Reset _lastLocationUpdateTime to $now.",
-                );
-              }
-            }
+        // Create a new summary for the new day
+        _currentSummary = DailySummary(
+          date: DateTime(now.year, now.month, now.day),
+          timeInLocations: {}, // Reset times for the new day
+          travelingTime: Duration.zero, // Reset travel time for the new day
+        );
+        _lastLocationUpdateTime =
+            now; // Reset last update time to now for accurate delta on new day
+        if (kDebugMode) {
+          print(
+            "Created new summary for ${_currentSummary!.date}. Reset _lastLocationUpdateTime to $now.",
+          );
+        }
+      }
 
-            _currentSummary ??= DailySummary(
-              date: DateTime(now.year, now.month, now.day).toUtc(),
-              timeInLocations: {},
-              travelingTime: Duration.zero,
-            );
-
-            final timeDelta = now.difference(_lastLocationUpdateTime);
-
-            final insideGeofences = await GeofenceService.checkGeofences(
-              position.latitude,
-              position.longitude,
-              geofences, // Using geofences loaded/combined at service start
-            );
-
-            if (insideGeofences.isNotEmpty) {
-              for (Geofence geofenceEntry in insideGeofences) {
-                _currentSummary = _currentSummary!.addTimeToLocation(
-                  geofenceEntry.id,
-                  timeDelta,
-                );
-              }
-            } else {
-              _currentSummary = _currentSummary!.addTravelingTime(timeDelta);
-            }
-
-            _lastLocationUpdateTime = now; // Update for the next position event
-            await storageService.saveDailySummary(
-              _currentSummary!,
-            ); // Save the potentially updated/new summary
-
-            // keep checking if tracking is still on
-            isTrackingOn = await storageService.isTrackingOn();
-
-            refreshGeoFences();
-          }
-        },
-        onError: (error, stackTrace) async {
-          if (kDebugMode) {
-            print("Error in position stream: $error, StackTrace: $stackTrace");
-          }
-        },
-        onDone: () {
-          if (kDebugMode) {
-            print("Position stream done.");
-          }
-        },
+      _currentSummary ??= DailySummary(
+        date: DateTime(now.year, now.month, now.day).toUtc(),
+        timeInLocations: {},
+        travelingTime: Duration.zero,
       );
 
+      final timeDelta = now.difference(_lastLocationUpdateTime);
+
+      final insideGeofences = await GeofenceService.checkGeofences(
+        position.latitude,
+        position.longitude,
+        geofences, // Using geofences loaded/combined at service start
+      );
+
+      if (insideGeofences.isNotEmpty) {
+        for (Geofence geofenceEntry in insideGeofences) {
+          _currentSummary = _currentSummary!.addTimeToLocation(
+            geofenceEntry.id,
+            timeDelta,
+          );
+        }
+      } else {
+        _currentSummary = _currentSummary!.addTravelingTime(timeDelta);
+      }
+
+      _lastLocationUpdateTime = now; // Update for the next position event
+      await storageService.saveDailySummary(
+        _currentSummary!,
+      ); // Save the potentially updated/new summary
+
+      // keep checking if tracking is still on
+      isTrackingOn = await storageService.isTrackingOn();
+      if (!isTrackingOn) {
+        service.invoke('stopService');
+        return;
+      }
+
+      await refreshGeoFences();
+    }
+  }
+
+  if (Platform.isIOS) {
+    _iosTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+      final position = await Geolocator.getCurrentPosition();
+      await processPosition(position);
+    });
+  } else {
+    _positionUpdatesStream = Geolocator.getPositionStream(
+      locationSettings: AndroidSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 0,
+      ),
+    ).listen(processPosition);
+  }
+
   service.on('stopService').listen((event) async {
-    storageService.turnTrackingOn_Or_Off(false);
+    await storageService.turnTrackingOn_Or_Off(false);
     if (kDebugMode) {
       print(
         "'stopService' event received. Cancelling position stream and saving final summary.",
       );
     }
-    await _positionUpdatesStream?.cancel();
-    _positionUpdatesStream = null;
+
+    if (Platform.isIOS) {
+      _iosTimer?.cancel();
+      _iosTimer = null;
+    } else {
+      await _positionUpdatesStream?.cancel();
+      _positionUpdatesStream = null;
+    }
+
     if (_currentSummary != null) {
       await storageService.saveDailySummary(
         _currentSummary!,

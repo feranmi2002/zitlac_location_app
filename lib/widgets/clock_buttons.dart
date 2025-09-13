@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:zitlac_location_app/providers/geofence_provider.dart';
 import '../providers/tracking_provider.dart';
@@ -37,6 +38,16 @@ class ClockButtons extends StatelessWidget {
               );
 
               await LocationService.requestLocationService();
+              return;
+            }
+
+            final Position? currentPosition =
+            await LocationService.getCurrentPosition();
+
+            if (currentPosition == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Could not fetch current location.')),
+              );
               return;
             }
 
